@@ -4,9 +4,9 @@ A lightweight SIEM built in Python that ingests real Linux and firewall logs, de
 
 ## Features (Roadmap)
 - [x] **Phase 1** — Log Parser (auth.log + firewall logs)
-- [ ] **Phase 2** — Threat Detection Engine (brute force, port scan, privilege escalation)
-- [ ] **Phase 3** — Web Dashboard (Flask + Chart.js)
-- [ ] **Phase 4** — VirusTotal IP enrichment
+- [x] **Phase 2** — Threat Detection Engine (brute force, port scan, privilege escalation)
+- [x] **Phase 3** — Web Dashboard (Flask + Chart.js)
+- [x] **Phase 4** — VirusTotal IP enrichment
 
 ## Tech Stack
 Python · Pandas · Flask · VirusTotal API · MITRE ATT&CK
