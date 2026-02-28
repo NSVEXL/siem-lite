@@ -316,6 +316,61 @@
     .ts-text { color: var(--muted); font-size: 12px; }
     .desc-text { color: var(--text); font-family: var(--font-ui); font-size: 13px; max-width: 380px; }
 
+    /* ── VT BUTTON ── */
+    .vt-btn {
+      background: transparent;
+      border: 1px solid var(--muted);
+      color: var(--muted);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+    .vt-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 8px rgba(0,212,255,0.2); }
+    .vt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 500;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--accent);
+      border-radius: 10px; padding: 28px; min-width: 440px;
+      box-shadow: 0 0 40px rgba(0,212,255,0.15);
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .modal-title {
+      font-family: var(--font-mono); font-size: 13px;
+      color: var(--accent); letter-spacing: 2px;
+      margin-bottom: 20px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+    .modal-close:hover { color: var(--text); }
+    .vt-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 12px;
+    }
+    .vt-row:last-child { border-bottom: none; }
+    .vt-key { color: var(--muted); }
+    .vt-val { color: var(--text); }
+    .verdict-MALICIOUS  { color: var(--red) !important; font-weight: 700; }
+    .verdict-SUSPICIOUS { color: var(--orange) !important; }
+    .verdict-CLEAN      { color: var(--green) !important; }
+    .verdict-UNKNOWN, .verdict-PRIVATE, .verdict-ERROR { color: var(--muted) !important; }
+
     /* ── FOOTER ── */
     footer {
       text-align: center;
@@ -419,6 +474,7 @@
           <th>Description</th>
           <th>MITRE</th>
           <th>Tactic</th>
+          <th>VT Lookup</th>
         </tr>
       </thead>
       <tbody>
@@ -431,6 +487,13 @@
           <td class="desc-text">{{ alert.description }}</td>
           <td><span class="mitre-tag">{{ alert.mitre_id }}</span></td>
           <td style="color:var(--muted);font-size:12px">{{ alert.mitre_tactic }}</td>
+          <td>
+            {% if alert.source_ip != 'local' and not alert.source_ip.startswith('10.') and not alert.source_ip.startswith('192.168.') %}
+            <button class="vt-btn" onclick="enrichIP(this.dataset.ip, this)" data-ip="{{ alert.source_ip }}">🔍 ENRICH</button>
+            {% else %}
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">PRIVATE</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -442,6 +505,21 @@
 <footer>
   SIEM-LITE v1.0 &nbsp;·&nbsp; Built by <a href="https://github.com/NSVEXL">@NSVEXL</a> &nbsp;·&nbsp; MITRE ATT&CK Framework
 </footer>
+
+<!-- VT MODAL -->
+<div class="modal-overlay" id="vtModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span>🔍 VIRUSTOTAL IP REPORT</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="vtContent">
+      <div style="text-align:center;padding:20px;font-family:var(--font-mono);color:var(--muted)">
+        Querying VirusTotal...
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   // Clock
@@ -525,6 +603,68 @@
       }
     }
   });
+
+  // ── VT ENRICHMENT ──────────────────────────────────────────
+  async function enrichIP(ip, btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ ...';
+    document.getElementById('vtModal').classList.add('active');
+    document.getElementById('vtContent').innerHTML = '<div style="text-align:center;padding:20px;font-family:var(--font-mono);color:var(--muted)">Querying VirusTotal for ' + ip + '...</div>';
+
+    try {
+      const res = await fetch('/api/enrich/' + ip);
+      const d = await res.json();
+
+      if (d.error && d.verdict !== 'PRIVATE') {
+        document.getElementById('vtContent').innerHTML = '<div style="color:var(--red);font-family:var(--font-mono);font-size:12px">Error: ' + d.error + '</div>';
+        btn.textContent = '❌ ERROR';
+        return;
+      }
+
+      const rows = [
+        ['IP Address',   d.ip],
+        ['Verdict',      d.verdict_label || d.verdict],
+        ['Country',      d.country],
+        ['ASN',          d.asn],
+        ['Owner',        d.as_owner],
+        ['Reputation',   d.reputation],
+        ['Malicious',    d.malicious + ' engines'],
+        ['Suspicious',   d.suspicious + ' engines'],
+        ['Clean',        d.harmless + ' engines'],
+      ];
+
+      let html = '';
+      rows.forEach(([k, v]) => {
+        const cls = k === 'Verdict' ? 'vt-val verdict-' + d.verdict : 'vt-val';
+        html += '<div class="vt-row"><span class="vt-key">' + k + '</span><span class="' + cls + '">' + v + '</span></div>';
+      });
+
+      if (d.error) {
+        html += '<div class="vt-row"><span class="vt-key">Note</span><span class="vt-val" style="color:var(--muted)">' + d.error + '</span></div>';
+      }
+
+      document.getElementById('vtContent').innerHTML = html;
+
+      // Update button with verdict color
+      const colors = { MALICIOUS: '#ff3366', SUSPICIOUS: '#ff8c00', CLEAN: '#00ff88', PRIVATE: '#4a6a8a' };
+      btn.textContent = d.verdict;
+      btn.style.borderColor = colors[d.verdict] || '#4a6a8a';
+      btn.style.color = colors[d.verdict] || '#4a6a8a';
+
+    } catch(e) {
+      document.getElementById('vtContent').innerHTML = '<div style="color:var(--red);font-family:var(--font-mono)">Connection error</div>';
+      btn.textContent = '❌ ERR';
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('vtModal').classList.remove('active');
+  }
+
+  document.getElementById('vtModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
 </script>
 </body>
 </html>

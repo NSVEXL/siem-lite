@@ -5,3 +5,4 @@ __pycache__/
 !logs/samples/
 .DS_Store
 venv/
+echo ".env" >> .gitignore
