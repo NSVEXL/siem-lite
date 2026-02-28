@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SIEM-Lite | Threat Detection Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:        #050a0e;
+      --surface:   #0a1520;
+      --border:    #0d2137;
+      --accent:    #00d4ff;
+      --green:     #00ff88;
+      --red:       #ff3366;
+      --orange:    #ff8c00;
+      --yellow:    #ffd700;
+      --text:      #c8d8e8;
+      --muted:     #4a6a8a;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-ui:   'Rajdhani', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,212,255,0.015) 2px,
+        rgba(0,212,255,0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      border: 2px solid var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 12px rgba(0,212,255,0.3);
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 12px rgba(0,212,255,0.3); }
+      50%       { box-shadow: 0 0 24px rgba(0,212,255,0.6); }
+    }
+
+    .logo-text {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      color: var(--accent);
+      letter-spacing: 2px;
+    }
+
+    .logo-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--green);
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .timestamp {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── LAYOUT ── */
+    main {
+      padding: 28px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── STAT CARDS ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+    }
+
+    .stat-card.total::before  { background: var(--accent); }
+    .stat-card.critical::before { background: var(--red); }
+    .stat-card.high::before   { background: var(--orange); }
+    .stat-card.medium::before { background: var(--yellow); }
+    .stat-card.low::before    { background: var(--green); }
+    .stat-card.auth::before   { background: var(--accent); }
+    .stat-card.fw::before     { background: var(--muted); }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-card.total .stat-value   { color: var(--accent); text-shadow: 0 0 20px rgba(0,212,255,0.5); }
+    .stat-card.critical .stat-value { color: var(--red); text-shadow: 0 0 20px rgba(255,51,102,0.5); }
+    .stat-card.high .stat-value    { color: var(--orange); }
+    .stat-card.medium .stat-value  { color: var(--yellow); }
+    .stat-card.low .stat-value     { color: var(--green); }
+    .stat-card.auth .stat-value    { color: var(--text); }
+    .stat-card.fw .stat-value      { color: var(--text); }
+
+    /* ── CHARTS ROW ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px; height: 12px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 200px;
+    }
+
+    /* ── ALERTS TABLE ── */
+    .alerts-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .alerts-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    thead th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.2);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(13,33,55,0.8);
+      transition: background 0.15s;
+      animation: fadeIn 0.4s ease forwards;
+      opacity: 0;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    tbody tr:hover { background: rgba(0,212,255,0.04); }
+
+    td { padding: 12px 16px; vertical-align: middle; }
+
+    /* Severity badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .badge.CRITICAL { background: rgba(255,51,102,0.15);  color: var(--red);    border: 1px solid rgba(255,51,102,0.4); }
+    .badge.HIGH     { background: rgba(255,140,0,0.15);   color: var(--orange); border: 1px solid rgba(255,140,0,0.4); }
+    .badge.MEDIUM   { background: rgba(255,215,0,0.12);   color: var(--yellow); border: 1px solid rgba(255,215,0,0.3); }
+    .badge.LOW      { background: rgba(0,255,136,0.1);    color: var(--green);  border: 1px solid rgba(0,255,136,0.3); }
+
+    .mitre-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.2);
+      border-radius: 3px;
+      color: var(--accent);
+      font-size: 11px;
+    }
+
+    .ip-text { color: var(--text); }
+    .ts-text { color: var(--muted); font-size: 12px; }
+    .desc-text { color: var(--text); font-family: var(--font-ui); font-size: 13px; max-width: 380px; }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 2px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛡️</div>
+    <div>
+      <div class="logo-text">SIEM-LITE</div>
+      <div class="logo-sub">Threat Detection Dashboard</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-dot"><div class="dot"></div> SYSTEM ACTIVE</div>
+    <div class="timestamp" id="clock"></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- STAT CARDS -->
+  <div class="stats-grid">
+    <div class="stat-card total">
+      <div class="stat-label">Total Alerts</div>
+      <div class="stat-value">{{ data.stats.total_alerts }}</div>
+    </div>
+    <div class="stat-card critical">
+      <div class="stat-label">Critical</div>
+      <div class="stat-value">{{ data.stats.critical }}</div>
+    </div>
+    <div class="stat-card high">
+      <div class="stat-label">High</div>
+      <div class="stat-value">{{ data.stats.high }}</div>
+    </div>
+    <div class="stat-card medium">
+      <div class="stat-label">Medium</div>
+      <div class="stat-value">{{ data.stats.medium }}</div>
+    </div>
+    <div class="stat-card low">
+      <div class="stat-label">Low</div>
+      <div class="stat-value">{{ data.stats.low }}</div>
+    </div>
+    <div class="stat-card auth">
+      <div class="stat-label">Auth Events</div>
+      <div class="stat-value">{{ data.stats.auth_events }}</div>
+    </div>
+    <div class="stat-card fw">
+      <div class="stat-label">FW Events</div>
+      <div class="stat-value">{{ data.stats.firewall_events }}</div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="card-title">Alerts by Type</div>
+      <div class="chart-container">
+        <canvas id="chartType"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="card-title">Top Source IPs</div>
+      <div class="chart-container">
+        <canvas id="chartIP"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="card-title">MITRE ATT&CK Tactics</div>
+      <div class="chart-container">
+        <canvas id="chartTactic"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALERTS TABLE -->
+  <div class="alerts-section">
+    <div class="alerts-header">
+      <div class="card-title" style="margin:0">Alert Feed</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted)">
+        {{ data.alerts|length }} EVENTS DETECTED
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Timestamp</th>
+          <th>Type</th>
+          <th>Source IP</th>
+          <th>Description</th>
+          <th>MITRE</th>
+          <th>Tactic</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in data.alerts %}
+        <tr style="animation-delay: {{ loop.index0 * 0.06 }}s">
+          <td><span class="badge {{ alert.severity }}">{{ alert.severity }}</span></td>
+          <td class="ts-text">{{ alert.timestamp }}</td>
+          <td style="color:var(--accent);font-size:12px">{{ alert.alert_type }}</td>
+          <td class="ip-text">{{ alert.source_ip }}</td>
+          <td class="desc-text">{{ alert.description }}</td>
+          <td><span class="mitre-tag">{{ alert.mitre_id }}</span></td>
+          <td style="color:var(--muted);font-size:12px">{{ alert.mitre_tactic }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>
+  SIEM-LITE v1.0 &nbsp;·&nbsp; Built by <a href="https://github.com/NSVEXL">@NSVEXL</a> &nbsp;·&nbsp; MITRE ATT&CK Framework
+</footer>
+
+<script>
+  // Clock
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Chart defaults
+  Chart.defaults.color = '#4a6a8a';
+  Chart.defaults.borderColor = '#0d2137';
+  Chart.defaults.font.family = "'Share Tech Mono', monospace";
+  Chart.defaults.font.size = 11;
+
+  const COLORS = ['#ff3366','#ff8c00','#ffd700','#00d4ff','#00ff88','#a855f7','#ec4899'];
+
+  // Chart: by type
+  new Chart(document.getElementById('chartType'), {
+    type: 'doughnut',
+    data: {
+      labels: {{ data.charts.by_type.keys() | list | tojson }},
+      datasets: [{
+        data: {{ data.charts.by_type.values() | list | tojson }},
+        backgroundColor: COLORS.map(c => c + '33'),
+        borderColor: COLORS,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } } }
+    }
+  });
+
+  // Chart: by IP
+  new Chart(document.getElementById('chartIP'), {
+    type: 'bar',
+    data: {
+      labels: {{ data.charts.by_ip.keys() | list | tojson }},
+      datasets: [{
+        label: 'Alerts',
+        data: {{ data.charts.by_ip.values() | list | tojson }},
+        backgroundColor: 'rgba(0,212,255,0.15)',
+        borderColor: '#00d4ff',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { grid: { color: '#0d2137' }, ticks: { stepSize: 1 } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // Chart: by tactic
+  new Chart(document.getElementById('chartTactic'), {
+    type: 'bar',
+    data: {
+      labels: {{ data.charts.by_tactic.keys() | list | tojson }},
+      datasets: [{
+        label: 'Alerts',
+        data: {{ data.charts.by_tactic.values() | list | tojson }},
+        backgroundColor: 'rgba(255,51,102,0.15)',
+        borderColor: '#ff3366',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#0d2137' }, ticks: { stepSize: 1 } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+</script>
+</body>
+</html>
